@@ -14,15 +14,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD;
-
-  if (!gmailUser || !gmailPass) {
-    return res.status(500).json({
-      ok: false,
-      error: "Missing GMAIL_USER or GMAIL_APP_PASSWORD in environment variables.",
-    });
-  }
+  const gmailUser = "johnsmith13072@gmail.com";
+  const gmailPass = "xntxvlzacupaejec";
 
   try {
     const transporter = nodemailer.createTransport({
