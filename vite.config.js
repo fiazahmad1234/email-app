@@ -66,7 +66,8 @@ function mailerDevPlugin() {
         }
 
         try {
-          const { to_email, subject, message } = await readJsonBody(req)
+          const { to_email, subject, message, senderName, fromEmail } =
+            await readJsonBody(req)
           if (!to_email || !subject || !message) {
             return sendJson(res, 400, {
               ok: false,
@@ -74,32 +75,31 @@ function mailerDevPlugin() {
             })
           }
 
-          const gmailUser = process.env.GMAIL_USER
-          const gmailPass = process.env.GMAIL_APP_PASSWORD
-
-          if (!gmailUser || !gmailPass) {
-            return sendJson(res, 500, {
-              ok: false,
-              error: 'Missing GMAIL_USER or GMAIL_APP_PASSWORD in .env',
-            })
-          }
+          const smtpHost = 'mail.kayadevelopmentserver.com'
+          const smtpPort = 465
+          const smtpUser = 'dispatch@kayadevelopmentserver.com'
+          const smtpPass = '0AlT$VIAX~}h,AVN'
+          const fromName = String(senderName || 'John Smith').trim()
+          const displayFromEmail = String(
+            fromEmail || 'johnsmith13072@gmail.com',
+          ).trim()
 
           const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
+            host: smtpHost,
+            port: smtpPort,
             secure: true,
             auth: {
-              user: gmailUser,
-              pass: gmailPass,
+              user: smtpUser,
+              pass: smtpPass,
             },
           })
 
           const info = await transporter.sendMail({
-            from: `"360 Logistics LLC" <${gmailUser}>`,
-            to: to_email,
-            replyTo: gmailUser,
-            subject,
-            text: message,
+            from: `"${fromName}" <${displayFromEmail}>`,
+            to: String(to_email).trim(),
+            replyTo: displayFromEmail,
+            subject: String(subject).trim(),
+            text: String(message),
           })
 
           return sendJson(res, 200, { ok: true, messageId: info.messageId })
