@@ -14,11 +14,14 @@ function Login() {
     setError("");
     setLoading(true);
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const rawPassword = String(password || "");
     const users = getUsers();
 
     const matchedUser = users.find(
-      (u) => u.email.toLowerCase() === cleanEmail && u.password === password
+      (u) =>
+        String(u.email || "").trim().toLowerCase() === cleanEmail &&
+        String(u.password || "") === rawPassword
     );
 
     if (!matchedUser) {
@@ -53,9 +56,11 @@ function Login() {
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 text-center tracking-tight">
             Account Login
           </h2>
-          <p className="text-slate-500 text-sm text-center mt-1.5 mb-7">
-            Default Admin: <span className="font-mono font-semibold">admin@carrierchk.com</span> / <span className="font-mono font-semibold">Admin123!</span>
-          </p>
+          { <p className="text-slate-500 text-sm  text-center mt-1.5 mb-7">
+            Admin: <span className="font-mono font-semibold">testng purpose busy</span> / <span className="font-mono font-semibold">busy</span>
+            <br />
+            User: <span className="font-mono font-semibold"> testing purpose busy</span> / <span className="font-mono font-semibold">user</span>
+          </p> }
 
           {error && (
             <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-semibold">

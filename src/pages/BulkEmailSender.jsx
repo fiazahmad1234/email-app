@@ -23,17 +23,9 @@ Please let me know what equipment you run when you get a chance.
 Thank you,
 360 Logistics LLC`;
 
-const DEFAULT_FROM_EMAIL = "johnsmith13072@gmail.com";
-const DEFAULT_FROM_NAME = "360 Logistics LLC";
-const DEFAULT_MAILJET_URL = "https://api.mailjet.com/v3/send";
+const API_ENDPOINT = "/api/send-email";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const INTERVAL_SECONDS = 60; // 1 minute between emails
-
-function buildMailtoUrl(toEmail, subject, body) {
-  return `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(
-    subject
-  )}&body=${encodeURIComponent(body)}`;
-}
+const INTERVAL_SECONDS = 60;
 
 function BulkEmailSender() {
   const [emails, setEmails] = useState([]);
@@ -42,13 +34,6 @@ function BulkEmailSender() {
     RANDOM_SUBJECTS.join("\n")
   );
   const [messageBody, setMessageBody] = useState(BODY_MESSAGE);
-
-  const [mode, setMode] = useState("mailjet"); // "mailjet" | "mailto"
-  const [mailjetUrl, setMailjetUrl] = useState(DEFAULT_MAILJET_URL);
-  const [apiKey, setApiKey] = useState("");
-  const [secretKey, setSecretKey] = useState("");
-  const [fromEmail, setFromEmail] = useState(DEFAULT_FROM_EMAIL);
-  const [fromName, setFromName] = useState(DEFAULT_FROM_NAME);
 
   const [isRunning, setIsRunning] = useState(false);
   const [currentNum, setCurrentNum] = useState(0);
@@ -62,12 +47,6 @@ function BulkEmailSender() {
     emails: [],
     subjects: RANDOM_SUBJECTS,
     message: BODY_MESSAGE,
-    mode: "mailjet",
-    mailjetUrl: DEFAULT_MAILJET_URL,
-    apiKey: "",
-    secretKey: "",
-    fromEmail: DEFAULT_FROM_EMAIL,
-    fromName: DEFAULT_FROM_NAME,
     index: 0,
   });
 
@@ -90,92 +69,42 @@ function BulkEmailSender() {
     const chosenSubject = pickRandomSubject(cfg.subjects);
     setCurrentNum(idx + 1);
     setStatusMsg(
-      `Processing ${idx + 1} of ${cfg.emails.length} for ${recipientFromExcel}...`
+      `Sending ${idx + 1} of ${cfg.emails.length} to ${recipientFromExcel}...`
     );
 
     try {
-      if (cfg.mode === "mailto") {
-        const mailtoLink = buildMailtoUrl(
-          recipientFromExcel,
-          chosenSubject,
-          cfg.message
-        );
-        window.open(mailtoLink, "_blank", "noopener,noreferrer");
-        setLogs((prev) => [
-          ...prev,
-          {
-            email: recipientFromExcel,
-            subject: chosenSubject,
-            mailtoUrl: mailtoLink,
-            status: "Composed (Mail App)",
-            time: new Date().toLocaleTimeString(),
-          },
-        ]);
-      } else {
-        const headers = {
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: {
           "Content-Type": "application/json",
-        };
+        },
+        body: JSON.stringify({
+          to_email: recipientFromExcel,
+          subject: chosenSubject,
+          message: cfg.message,
+        }),
+      });
 
-        if (cfg.apiKey && cfg.secretKey) {
-          headers.Authorization = `Basic ${btoa(
-            `${cfg.apiKey}:${cfg.secretKey}`
-          )}`;
-        }
-
-        const response = await fetch(cfg.mailjetUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            Messages: [
-              {
-                From: {
-                  Email: cfg.fromEmail,
-                  Name: cfg.fromName || "360 Logistics LLC",
-                },
-                To: [
-                  {
-                    Email: recipientFromExcel,
-                  },
-                ],
-                Subject: chosenSubject,
-                TextPart: cfg.message,
-              },
-            ],
-          }),
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const msg =
-            data?.ErrorMessage ||
-            data?.Message ||
-            `Mailjet HTTP ${response.status}`;
-          throw new Error(msg);
-        }
-
-        const msgStatus =
-          data?.Messages?.[0]?.Status === "success"
-            ? `Sent via Mailjet to ${recipientFromExcel}`
-            : `Accepted by Mailjet (${recipientFromExcel})`;
-
-        setLogs((prev) => [
-          ...prev,
-          {
-            email: recipientFromExcel,
-            subject: chosenSubject,
-            mailtoUrl: "",
-            status: msgStatus,
-            time: new Date().toLocaleTimeString(),
-          },
-        ]);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || `HTTP ${response.status}`);
       }
+
+      setLogs((prev) => [
+        ...prev,
+        {
+          email: recipientFromExcel,
+          subject: chosenSubject,
+          status: `Sent (${data.messageId || "OK"})`,
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
     } catch (err) {
       setLogs((prev) => [
         ...prev,
         {
           email: recipientFromExcel,
           subject: chosenSubject,
-          mailtoUrl: buildMailtoUrl(recipientFromExcel, chosenSubject, cfg.message),
           status: `Failed: ${err.message}`,
           time: new Date().toLocaleTimeString(),
         },
@@ -279,7 +208,7 @@ function BulkEmailSender() {
 
         setEmails(unique);
         setStatusMsg(
-          `${unique.length} recipient emails imported from "${file.name}". Ready for 1-minute Mailjet queue.`
+          `${unique.length} recipient emails imported from "${file.name}". Ready for 1-minute auto send.`
         );
       } catch (err) {
         setErrorMsg("Excel file read karne mein error aaya: " + err.message);
@@ -304,17 +233,6 @@ function BulkEmailSender() {
       return;
     }
 
-    if (mode === "mailjet") {
-      if (!mailjetUrl.trim()) {
-        setErrorMsg("Mailjet endpoint URL enter karein.");
-        return;
-      }
-      if (!fromEmail.trim() || !EMAIL_REGEX.test(fromEmail.trim())) {
-        setErrorMsg("Valid verified From Email enter karein.");
-        return;
-      }
-    }
-
     const finalSubjects = subjects.length ? subjects : RANDOM_SUBJECTS;
     const finalMessage = messageBody.trim() || BODY_MESSAGE;
 
@@ -322,12 +240,6 @@ function BulkEmailSender() {
       emails,
       subjects: finalSubjects,
       message: finalMessage,
-      mode,
-      mailjetUrl: mailjetUrl.trim(),
-      apiKey: apiKey.trim(),
-      secretKey: secretKey.trim(),
-      fromEmail: fromEmail.trim().toLowerCase(),
-      fromName: fromName.trim() || DEFAULT_FROM_NAME,
       index: 0,
     };
 
@@ -348,26 +260,26 @@ function BulkEmailSender() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-6 space-y-4">
             <span className="inline-block bg-emerald-400/15 border border-emerald-300/30 text-emerald-200 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
-              MAILJET API • 10 RANDOM SUBJECTS • 1-MIN INTERVAL
+              REACT + TAILWIND + NODEMAILER • 1-MIN INTERVAL
             </span>
 
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
               360 Logistics Auto Sender
-              <span className="block text-emerald-300">Mailjet Queue</span>
+              <span className="block text-emerald-300">Gmail SMTP Queue</span>
             </h1>
 
             <p className="text-sm sm:text-base text-slate-200 max-w-xl leading-relaxed">
-              Extracts recipient emails from your Excel file, cycles through 10
-              random subject lines, sends the same message body via Mailjet, and
-              runs every 1 minute.
+              Extracts recipient emails from your Excel file, picks 1 of 10
+              random subjects, sends via Nodemailer (`smtp.gmail.com`), and runs
+              every 60 seconds.
             </p>
 
             <div className="pt-3 border-t border-white/15 flex flex-wrap gap-3 text-xs font-bold text-emerald-100">
               <span>Excel Recipients: {emails.length}</span>
               <span>•</span>
-              <span>From: {fromEmail}</span>
-              <span>•</span>
               <span>Interval: 60s</span>
+              <span>•</span>
+              <span>Endpoint: /api/send-email</span>
             </div>
           </div>
 
@@ -393,94 +305,6 @@ function BulkEmailSender() {
                   </p>
                 )}
               </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                  Send Mode
-                </label>
-                <select
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value)}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                >
-                  <option value="mailjet">Mailjet Send API</option>
-                  <option value="mailto">Browser Mail App</option>
-                </select>
-              </div>
-
-              {mode === "mailjet" && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                      Mailjet Endpoint URL
-                    </label>
-                    <input
-                      type="text"
-                      value={mailjetUrl}
-                      onChange={(e) => setMailjetUrl(e.target.value)}
-                      disabled={isRunning}
-                      className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                        Mailjet API Key
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="MJ_APIKEY_PUBLIC"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        disabled={isRunning}
-                        className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                        Mailjet Secret Key
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="MJ_APIKEY_PRIVATE"
-                        value={secretKey}
-                        onChange={(e) => setSecretKey(e.target.value)}
-                        disabled={isRunning}
-                        className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                        Verified From Email
-                      </label>
-                      <input
-                        type="email"
-                        value={fromEmail}
-                        onChange={(e) => setFromEmail(e.target.value)}
-                        disabled={isRunning}
-                        className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-emerald-200 mb-1">
-                        From Name
-                      </label>
-                      <input
-                        type="text"
-                        value={fromName}
-                        onChange={(e) => setFromName(e.target.value)}
-                        disabled={isRunning}
-                        className="w-full px-3 py-2 bg-slate-900/80 border border-white/20 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-emerald-400"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-emerald-300 mb-1.5">
@@ -587,18 +411,10 @@ function BulkEmailSender() {
                         <td className="p-4 font-mono text-xs text-slate-600">
                           {item.time}
                         </td>
-                        <td className="p-4 flex items-center gap-2 flex-wrap">
+                        <td className="p-4">
                           <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-[#156b3e]">
                             {item.status}
                           </span>
-                          {item.mailtoUrl && (
-                            <a
-                              href={item.mailtoUrl}
-                              className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition"
-                            >
-                              Open Mail
-                            </a>
-                          )}
                         </td>
                       </tr>
                     ))}
