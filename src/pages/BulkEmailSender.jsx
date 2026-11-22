@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx-js-style";
+import emailjs from "@emailjs/browser";
+
+const EMAILJS_SERVICE_ID = "service_bok9fkm";
+const EMAILJS_TEMPLATE_ID = "template_ly9etr2";
+const EMAILJS_PUBLIC_KEY = "wOx8A6Zo-r0PyRSVX";
 
 const RANDOM_SUBJECTS = [
   "360 Logistics LLC — Available lanes today",
@@ -23,16 +28,14 @@ Please let me know what equipment you run when you get a chance.
 Thank you,
 360 Logistics LLC`;
 
-const API_ENDPOINT = "/api/send-email";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const INTERVAL_SECONDS = 60;
+const INTERVAL_SECONDS = 30;
+const INTERVAL_MS = INTERVAL_SECONDS * 1000;
 
 function BulkEmailSender() {
   const [emails, setEmails] = useState([]);
   const [fileName, setFileName] = useState("");
-  const [subjectsText, setSubjectsText] = useState(
-    RANDOM_SUBJECTS.join("\n")
-  );
+  const [subjectsText, setSubjectsText] = useState(RANDOM_SUBJECTS.join("\n"));
   const [messageBody, setMessageBody] = useState(BODY_MESSAGE);
 
   const [isRunning, setIsRunning] = useState(false);
@@ -42,7 +45,8 @@ function BulkEmailSender() {
   const [errorMsg, setErrorMsg] = useState("");
   const [logs, setLogs] = useState([]);
 
-  const sendingStepRef = useRef(false);
+  const isSendingRef = useRef(false);
+  const nextSendAtRef = useRef(0);
   const queueRef = useRef({
     emails: [],
     subjects: RANDOM_SUBJECTS,
@@ -55,62 +59,59 @@ function BulkEmailSender() {
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  const runEmailAtIndex = async (idx) => {
-    if (sendingStepRef.current) return;
-    sendingStepRef.current = true;
+  const sendSingleEmail = async (idx) => {
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     const cfg = queueRef.current;
-    const recipientFromExcel = cfg.emails[idx];
-    if (!recipientFromExcel) {
-      sendingStepRef.current = false;
+    const recipient = cfg.emails[idx];
+    if (!recipient) {
+      isSendingRef.current = false;
       return;
     }
 
     const chosenSubject = pickRandomSubject(cfg.subjects);
     setCurrentNum(idx + 1);
-    setStatusMsg(
-      `Sending ${idx + 1} of ${cfg.emails.length} to ${recipientFromExcel}...`
-    );
+    setStatusMsg(`Sending ${idx + 1} of ${cfg.emails.length} to ${recipient}...`);
 
     try {
-      const response = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to_email: recipientFromExcel,
+      const response = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          to_email: recipient,
           subject: chosenSubject,
           message: cfg.message,
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
+        },
+        {
+          publicKey: EMAILJS_PUBLIC_KEY,
+        }
+      );
 
       setLogs((prev) => [
         ...prev,
         {
-          email: recipientFromExcel,
+          email: recipient,
           subject: chosenSubject,
-          status: `Sent (${data.messageId || "OK"})`,
+          ok: true,
+          status: `Sent (${response.status || 200})`,
           time: new Date().toLocaleTimeString(),
         },
       ]);
     } catch (err) {
+      const detail = err?.text || err?.message || "Failed to send email";
       setLogs((prev) => [
         ...prev,
         {
-          email: recipientFromExcel,
+          email: recipient,
           subject: chosenSubject,
-          status: `Failed: ${err.message}`,
+          ok: false,
+          status: `Failed: ${detail}`,
           time: new Date().toLocaleTimeString(),
         },
       ]);
     } finally {
-      sendingStepRef.current = false;
+      isSendingRef.current = false;
     }
   };
 
@@ -123,50 +124,69 @@ function BulkEmailSender() {
       return;
     }
 
-    runEmailAtIndex(queueRef.current.index);
+    let cancelled = false;
 
-    if (queueRef.current.index + 1 >= total) {
-      setIsRunning(false);
-      setSecondsLeft(0);
-      setStatusMsg(`Completed: All ${total} Excel recipients processed.`);
-      return;
-    }
+    const syncTick = async () => {
+      if (cancelled || isSendingRef.current) return;
 
-    setSecondsLeft(INTERVAL_SECONDS);
+      const now = Date.now();
+      const remainingMs = Math.max(0, nextSendAtRef.current - now);
+      const remSec = Math.ceil(remainingMs / 1000);
+      setSecondsLeft(remSec);
 
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev > 1) {
-          return prev - 1;
-        }
+      if (remainingMs > 0) return;
 
-        const nextIdx = queueRef.current.index + 1;
-        if (nextIdx >= queueRef.current.emails.length) {
-          clearInterval(timer);
-          setIsRunning(false);
-          setStatusMsg(
-            `Completed: All ${queueRef.current.emails.length} Excel recipients processed.`
-          );
-          return 0;
-        }
+      const nextIdx = queueRef.current.index + 1;
+      if (nextIdx >= total) {
+        setIsRunning(false);
+        setSecondsLeft(0);
+        setStatusMsg(`Completed: All ${total} Excel recipients processed.`);
+        return;
+      }
 
-        queueRef.current.index = nextIdx;
-        runEmailAtIndex(nextIdx);
+      queueRef.current.index = nextIdx;
+      nextSendAtRef.current =
+        nextIdx + 1 < total ? Date.now() + INTERVAL_MS : 0;
+      setSecondsLeft(nextIdx + 1 < total ? INTERVAL_SECONDS : 0);
 
-        if (nextIdx + 1 >= queueRef.current.emails.length) {
-          clearInterval(timer);
-          setIsRunning(false);
-          setStatusMsg(
-            `Completed: All ${queueRef.current.emails.length} Excel recipients processed.`
-          );
-          return 0;
-        }
+      await sendSingleEmail(nextIdx);
 
-        return INTERVAL_SECONDS;
-      });
-    }, 1000);
+      if (!cancelled && nextIdx + 1 >= total) {
+        setIsRunning(false);
+        setSecondsLeft(0);
+        setStatusMsg(`Completed: All ${total} Excel recipients processed.`);
+      }
+    };
 
-    return () => clearInterval(timer);
+    (async () => {
+      await sendSingleEmail(queueRef.current.index);
+      if (cancelled) return;
+
+      if (queueRef.current.index + 1 >= total) {
+        setIsRunning(false);
+        setSecondsLeft(0);
+        setStatusMsg(`Completed: All ${total} Excel recipients processed.`);
+        return;
+      }
+
+      nextSendAtRef.current = Date.now() + INTERVAL_MS;
+      setSecondsLeft(INTERVAL_SECONDS);
+    })();
+
+    const intervalId = setInterval(syncTick, 1000);
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        syncTick();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [isRunning]);
 
   const handleExcelUpload = (e) => {
@@ -208,7 +228,7 @@ function BulkEmailSender() {
 
         setEmails(unique);
         setStatusMsg(
-          `${unique.length} recipient emails imported from "${file.name}". Ready for 1-minute auto send.`
+          `${unique.length} recipient emails imported from "${file.name}". Ready for 30-second auto send.`
         );
       } catch (err) {
         setErrorMsg("Excel file read karne mein error aaya: " + err.message);
@@ -233,16 +253,14 @@ function BulkEmailSender() {
       return;
     }
 
-    const finalSubjects = subjects.length ? subjects : RANDOM_SUBJECTS;
-    const finalMessage = messageBody.trim() || BODY_MESSAGE;
-
     queueRef.current = {
       emails,
-      subjects: finalSubjects,
-      message: finalMessage,
+      subjects: subjects.length ? subjects : RANDOM_SUBJECTS,
+      message: messageBody.trim() || BODY_MESSAGE,
       index: 0,
     };
 
+    nextSendAtRef.current = emails.length > 1 ? Date.now() + INTERVAL_MS : 0;
     setCurrentNum(1);
     setSecondsLeft(emails.length > 1 ? INTERVAL_SECONDS : 0);
     setIsRunning(true);
@@ -260,26 +278,25 @@ function BulkEmailSender() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-6 space-y-4">
             <span className="inline-block bg-emerald-400/15 border border-emerald-300/30 text-emerald-200 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
-              REACT + TAILWIND + NODEMAILER • 1-MIN INTERVAL
+              REACT + TAILWIND + EMAILJS • 30S INTERVAL
             </span>
 
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
               360 Logistics Auto Sender
-              <span className="block text-emerald-300">Gmail SMTP Queue</span>
+              <span className="block text-emerald-300">EmailJS Queue</span>
             </h1>
 
             <p className="text-sm sm:text-base text-slate-200 max-w-xl leading-relaxed">
               Extracts recipient emails from your Excel file, picks 1 of 10
-              random subjects, sends via Nodemailer (`smtp.gmail.com`), and runs
-              every 60 seconds.
+              random subjects, sends via EmailJS, and runs every 30 seconds.
             </p>
 
             <div className="pt-3 border-t border-white/15 flex flex-wrap gap-3 text-xs font-bold text-emerald-100">
               <span>Excel Recipients: {emails.length}</span>
               <span>•</span>
-              <span>Interval: 60s</span>
+              <span>Interval: 30s</span>
               <span>•</span>
-              <span>Endpoint: /api/send-email</span>
+              <span>Provider: EmailJS</span>
             </div>
           </div>
 
@@ -412,7 +429,13 @@ function BulkEmailSender() {
                           {item.time}
                         </td>
                         <td className="p-4">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-[#156b3e]">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                              item.ok
+                                ? "bg-emerald-100 text-[#156b3e]"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
                             {item.status}
                           </span>
                         </td>
