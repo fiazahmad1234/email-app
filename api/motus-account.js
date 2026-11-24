@@ -1,27 +1,20 @@
 import fs from "node:fs";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const PHONE_REGEX = /(\+?\d?\s*\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/;
 
-function findSystemChromeExecutable() {
-  const candidates = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROME_PATH,
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
+function getLocalChromePath() {
+  const localPaths = [
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  ].filter(Boolean);
-
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {
-      // ignore
-    }
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+  ];
+  for (const p of localPaths) {
+    if (fs.existsSync(p)) return p;
   }
   return null;
 }
@@ -81,83 +74,8 @@ function parseRenderedText(innerText = "", dot, url) {
   };
 }
 
-async function tryLaunchBrowser() {
-  const executablePath = findSystemChromeExecutable();
-  const launchOptions = {
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-    ],
-    ...(executablePath ? { executablePath } : {}),
-  };
-
-  return await puppeteer.launch(launchOptions);
-}
-
-async function fetchDirectFallback(dot, url, reason) {
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
-
-    if (!res.ok) {
-      return {
-        dot,
-        url,
-        legalName: "N/A",
-        email: "",
-        phone: "N/A",
-        address: "N/A",
-        status: `HTTP ${res.status} (${reason})`,
-      };
-    }
-
-    const html = await res.text();
-    const plainText = html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, "\n");
-
-    const parsed = parseRenderedText(plainText, dot, url);
-    if (parsed.email || (parsed.legalName && parsed.legalName !== "N/A")) {
-      return parsed;
-    }
-
-    return {
-      dot,
-      url,
-      legalName: "N/A",
-      email: "",
-      phone: "N/A",
-      address: "N/A",
-      status: "Chrome Missing on Server",
-    };
-  } catch (err) {
-    return {
-      dot,
-      url,
-      legalName: "N/A",
-      email: "",
-      phone: "N/A",
-      address: "N/A",
-      status: err?.message || "Server Error",
-    };
-  }
-}
-
 export default async function handler(req, res) {
   let browser = null;
-  let browserUnavailableReason = "";
-
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ ok: false, error: "Method Not Allowed" });
@@ -188,75 +106,68 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Valid DOT numbers are required." });
     }
 
-    try {
-      browser = await tryLaunchBrowser();
-    } catch (launchErr) {
-      browserUnavailableReason =
-        launchErr?.message || "Chrome binary not available";
-    }
+    const isLinuxProduction = process.platform === "linux";
+    const executablePath = isLinuxProduction
+      ? await chromium.executablePath()
+      : getLocalChromePath();
+
+    browser = await puppeteer.launch({
+      args: isLinuxProduction
+        ? chromium.args
+        : ["--no-sandbox", "--disable-setuid-sandbox"],
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: isLinuxProduction ? chromium.headless : "new",
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    );
 
     const results = [];
 
-    if (browser) {
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1366, height: 900 });
-      await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-      );
+    for (const dot of dots) {
+      const url = `https://motus.dot.gov/customer/${dot}/account`;
+      try {
+        await page.goto(url, {
+          waitUntil: "networkidle2",
+          timeout: 30000,
+        });
 
-      for (const dot of dots) {
-        const url = `https://motus.dot.gov/customer/${dot}/account`;
-        try {
-          await page.goto(url, {
-            waitUntil: "networkidle2",
-            timeout: 35000,
-          });
+        await page
+          .waitForFunction(
+            () =>
+              /Legal Business Name|Business Email|USDOT #/i.test(
+                document.body.innerText || ""
+              ),
+            { timeout: 10000 }
+          )
+          .catch(() => {});
 
-          await page
-            .waitForFunction(
-              () =>
-                /Legal Business Name|Business Email|USDOT #/i.test(
-                  document.body.innerText || ""
-                ),
-              { timeout: 12000 }
-            )
-            .catch(() => {});
-
-          const innerText = await page.evaluate(
-            () => document.body.innerText || ""
-          );
-
-          results.push(parseRenderedText(innerText, dot, url));
-        } catch (err) {
-          results.push({
-            dot,
-            url,
-            legalName: "N/A",
-            email: "",
-            phone: "N/A",
-            address: "N/A",
-            status: `Error: ${err?.message || "Page load failed"}`,
-          });
-        }
-      }
-    } else {
-      for (const dot of dots) {
-        const url = `https://motus.dot.gov/customer/${dot}/account`;
-        results.push(
-          await fetchDirectFallback(dot, url, browserUnavailableReason)
+        const innerText = await page.evaluate(
+          () => document.body.innerText || ""
         );
+
+        results.push(parseRenderedText(innerText, dot, url));
+      } catch (err) {
+        results.push({
+          dot,
+          url,
+          legalName: "N/A",
+          email: "",
+          phone: "N/A",
+          address: "N/A",
+          status: `Error: ${err?.message || "Page timeout"}`,
+        });
       }
     }
 
-    return res.status(200).json({
-      ok: true,
-      browserAvailable: Boolean(browser),
-      results,
-    });
+    return res.status(200).json({ ok: true, results });
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      error: err?.message || "Internal Server Error",
+      error: err?.message || "Browser execution error",
     });
   } finally {
     if (browser) {
