@@ -449,7 +449,15 @@ label {
   line-height: 1.5;
   margin: 0;
 }
-@media (min-width: 1024px) {
+/* Laptop and Tablet */
+@media (min-width: 768px) and (max-width: 1440px) {
+    .fizii {
+        gap: 20px !important;
+    }
+}
+
+/* Desktop */
+@media (min-width: 1441px) {
     .fizii {
         gap: 180px;
     }

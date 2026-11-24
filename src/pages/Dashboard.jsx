@@ -24,8 +24,8 @@ function Dashboard() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-4 shadow-sm">
+      <div className="min-h-screen w-full max-w-full overflow-x-clip bg-slate-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full min-w-0 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 text-center space-y-4 shadow-sm">
           <h2 className="text-2xl font-black text-slate-900">Login Required</h2>
           <p className="text-sm text-slate-600">
             Please login with your Admin or User account to access the dashboard.
@@ -123,17 +123,17 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased">
-      <section className="bg-gradient-to-br from-slate-950 via-[#0d3b22] to-[#156b3e] text-white py-12 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <span className="inline-block bg-emerald-400/15 border border-emerald-300/30 text-emerald-200 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-slate-50 text-slate-800 font-sans antialiased">
+      <section className="w-full max-w-full overflow-x-clip bg-gradient-to-br from-slate-950 via-[#0d3b22] to-[#156b3e] text-white py-10 sm:py-16">
+        <div className="max-w-7xl w-full min-w-0 mx-auto px-4 sm:px-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0 max-w-full">
+            <span className="inline-block bg-emerald-400/15 border border-emerald-300/30 text-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
               {isAdmin ? "ADMIN DASHBOARD" : "USER DASHBOARD"}
             </span>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight">
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight break-words">
               Welcome, <span className="text-emerald-300">{currentUser.name}</span>
             </h1>
-            <p className="text-sm text-slate-200 mt-1">
+            <p className="text-sm text-slate-200 mt-1 break-words">
               Active Role:{" "}
               <span className="font-mono font-bold uppercase text-emerald-300">
                 {currentUser.role}
@@ -143,11 +143,11 @@ function Dashboard() {
         </div>
       </section>
 
-      <section className="py-10 sm:py-14 px-4 sm:px-8 max-w-7xl mx-auto space-y-8">
+      <section className="w-full max-w-full overflow-x-clip py-8 sm:py-14 px-4 sm:px-8 max-w-7xl mx-auto space-y-8">
         {isAdmin ? (
-          <div className="grid lg:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 min-w-0">
             {/* Admin Add User Form */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm h-fit">
+            <div className="lg:col-span-5 w-full min-w-0 bg-white border border-slate-200 rounded-3xl p-5 sm:p-8 shadow-sm h-fit">
               <h2 className="text-xl font-black text-slate-900 mb-1">Add New User</h2>
               <p className="text-xs text-slate-500 mb-5">
                 Role is automatically assigned as{" "}
@@ -156,7 +156,7 @@ function Dashboard() {
 
               {feedback.text && (
                 <div
-                  className={`mb-4 p-3 rounded-xl text-xs font-semibold border ${
+                  className={`mb-4 p-3 rounded-xl text-xs font-semibold border break-words ${
                     feedback.type === "error"
                       ? "bg-red-50 border-red-200 text-red-700"
                       : "bg-emerald-50 border-emerald-200 text-[#156b3e]"
@@ -167,7 +167,7 @@ function Dashboard() {
               )}
 
               <form onSubmit={handleQuickAddUser} className="space-y-4">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5">
                     Name
                   </label>
@@ -177,10 +177,10 @@ function Dashboard() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Full name"
                     required
-                    className="w-full px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
+                    className="w-full min-w-0 px-3.5 sm:px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5">
                     Email
                   </label>
@@ -190,10 +190,10 @@ function Dashboard() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="user@example.com"
                     required
-                    className="w-full px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
+                    className="w-full min-w-0 px-3.5 sm:px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5">
                     Password
                   </label>
@@ -204,7 +204,7 @@ function Dashboard() {
                     placeholder="Min 6 characters"
                     required
                     minLength={6}
-                    className="w-full px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
+                    className="w-full min-w-0 px-3.5 sm:px-4 py-2.5 border border-slate-300 bg-slate-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#156b3e]"
                   />
                 </div>
                 <button
@@ -217,18 +217,18 @@ function Dashboard() {
             </div>
 
             {/* Admin Users List */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm">
+            <div className="lg:col-span-7 w-full min-w-0 bg-white border border-slate-200 rounded-3xl p-5 sm:p-8 shadow-sm">
               <h2 className="text-xl font-black text-slate-900 mb-4">
                 Registered Accounts ({usersList.length})
               </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+              <div className="w-full max-w-full overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-600 text-xs uppercase">
-                      <th className="p-3.5 font-black rounded-tl-xl">Name</th>
-                      <th className="p-3.5 font-black">Email</th>
-                      <th className="p-3.5 font-black">Role</th>
-                      <th className="p-3.5 font-black rounded-tr-xl text-right">
+                    <tr className="bg-slate-100 text-slate-600 text-[11px] sm:text-xs uppercase">
+                      <th className="p-2.5 sm:p-3.5 font-black rounded-tl-xl">Name</th>
+                      <th className="p-2.5 sm:p-3.5 font-black">Email</th>
+                      <th className="p-2.5 sm:p-3.5 font-black">Role</th>
+                      <th className="p-2.5 sm:p-3.5 font-black rounded-tr-xl text-right">
                         Action
                       </th>
                     </tr>
@@ -236,13 +236,15 @@ function Dashboard() {
                   <tbody className="divide-y divide-slate-100">
                     {usersList.map((u) => (
                       <tr key={u.id ?? u.email} className="hover:bg-slate-50/70">
-                        <td className="p-3.5 font-bold text-slate-900">{u.name}</td>
-                        <td className="p-3.5 font-mono text-xs text-slate-600">
+                        <td className="p-2.5 sm:p-3.5 font-bold text-slate-900 break-words">
+                          {u.name}
+                        </td>
+                        <td className="p-2.5 sm:p-3.5 font-mono text-[11px] sm:text-xs text-slate-600 break-all">
                           {u.email}
                         </td>
-                        <td className="p-3.5">
+                        <td className="p-2.5 sm:p-3.5 whitespace-nowrap">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                            className={`px-2 sm:px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase ${
                               u.role === "admin"
                                 ? "bg-emerald-100 text-[#156b3e]"
                                 : "bg-slate-100 text-slate-700"
@@ -251,11 +253,11 @@ function Dashboard() {
                             {u.role}
                           </span>
                         </td>
-                        <td className="p-3.5 text-right">
+                        <td className="p-2.5 sm:p-3.5 text-right whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => handleDeleteUser(u)}
-                            className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-bold px-3 py-1.5 rounded-lg text-xs transition cursor-pointer"
+                            className="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 font-bold px-2.5 sm:px-3 py-1.5 rounded-lg text-xs transition cursor-pointer"
                           >
                             Delete
                           </button>
@@ -280,7 +282,7 @@ function Dashboard() {
           </div>
         ) : (
           /* User Dashboard */
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-5">
+          <div className="w-full min-w-0 bg-white border border-slate-200 rounded-3xl p-5 sm:p-8 shadow-sm space-y-5">
             <h2 className="text-2xl font-black text-slate-900">User Workspace</h2>
             <p className="text-sm text-slate-600">
               You are logged in as a standard{" "}

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx-js-style";
 import emailjs from "@emailjs/browser";
 
-const EMAILJS_SERVICE_ID = "service_bok9fkm";
-const EMAILJS_TEMPLATE_ID = "template_ly9etr2";
-const EMAILJS_PUBLIC_KEY = "wOx8A6Zo-r0PyRSVX";
+const DEFAULT_SERVICE_ID = "service_bok9fkm";
+const DEFAULT_TEMPLATE_ID = "template_ly9etr2";
+const DEFAULT_PUBLIC_KEY = "wOx8A6Zo-r0PyRSVX";
 
 const RANDOM_SUBJECTS = [
   "360 Logistics LLC — Available lanes today",
@@ -33,6 +33,17 @@ const INTERVAL_SECONDS = 30;
 const INTERVAL_MS = INTERVAL_SECONDS * 1000;
 
 function BulkEmailSender() {
+  // Editable EmailJS credentials (saved in localStorage so reload par bhi yaad rahein)
+  const [serviceId, setServiceId] = useState(
+    () => localStorage.getItem("ejs_service_id") || DEFAULT_SERVICE_ID
+  );
+  const [templateId, setTemplateId] = useState(
+    () => localStorage.getItem("ejs_template_id") || DEFAULT_TEMPLATE_ID
+  );
+  const [publicKey, setPublicKey] = useState(
+    () => localStorage.getItem("ejs_public_key") || DEFAULT_PUBLIC_KEY
+  );
+
   const [emails, setEmails] = useState([]);
   const [fileName, setFileName] = useState("");
   const [subjectsText, setSubjectsText] = useState(RANDOM_SUBJECTS.join("\n"));
@@ -52,7 +63,25 @@ function BulkEmailSender() {
     subjects: RANDOM_SUBJECTS,
     message: BODY_MESSAGE,
     index: 0,
+    serviceId: DEFAULT_SERVICE_ID,
+    templateId: DEFAULT_TEMPLATE_ID,
+    publicKey: DEFAULT_PUBLIC_KEY,
   });
+
+  // Live sync: agar sending ke doran bhi key change ho to queueRef foran update ho
+  useEffect(() => {
+    const cleanService = serviceId.trim();
+    const cleanTemplate = templateId.trim();
+    const cleanKey = publicKey.trim();
+
+    localStorage.setItem("ejs_service_id", cleanService);
+    localStorage.setItem("ejs_template_id", cleanTemplate);
+    localStorage.setItem("ejs_public_key", cleanKey);
+
+    queueRef.current.serviceId = cleanService;
+    queueRef.current.templateId = cleanTemplate;
+    queueRef.current.publicKey = cleanKey;
+  }, [serviceId, templateId, publicKey]);
 
   const pickRandomSubject = (list) => {
     if (!list.length) return "360 Logistics LLC — Available lanes today";
@@ -70,21 +99,30 @@ function BulkEmailSender() {
       return;
     }
 
+    if (!cfg.serviceId || !cfg.templateId || !cfg.publicKey) {
+      setErrorMsg("Service ID, Template ID, aur Public Key teeno required hain.");
+      setIsRunning(false);
+      isSendingRef.current = false;
+      return;
+    }
+
     const chosenSubject = pickRandomSubject(cfg.subjects);
     setCurrentNum(idx + 1);
-    setStatusMsg(`Sending ${idx + 1} of ${cfg.emails.length} to ${recipient}...`);
+    setStatusMsg(
+      `Sending ${idx + 1} of ${cfg.emails.length} to ${recipient} (${cfg.templateId})...`
+    );
 
     try {
       const response = await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
+        cfg.serviceId,
+        cfg.templateId,
         {
           to_email: recipient,
           subject: chosenSubject,
           message: cfg.message,
         },
         {
-          publicKey: EMAILJS_PUBLIC_KEY,
+          publicKey: cfg.publicKey,
         }
       );
 
@@ -93,6 +131,7 @@ function BulkEmailSender() {
         {
           email: recipient,
           subject: chosenSubject,
+          template: cfg.templateId,
           ok: true,
           status: `Sent (${response.status || 200})`,
           time: new Date().toLocaleTimeString(),
@@ -105,6 +144,7 @@ function BulkEmailSender() {
         {
           email: recipient,
           subject: chosenSubject,
+          template: cfg.templateId,
           ok: false,
           status: `Failed: ${detail}`,
           time: new Date().toLocaleTimeString(),
@@ -243,6 +283,15 @@ function BulkEmailSender() {
     setErrorMsg("");
     setLogs([]);
 
+    const cleanService = serviceId.trim();
+    const cleanTemplate = templateId.trim();
+    const cleanKey = publicKey.trim();
+
+    if (!cleanService || !cleanTemplate || !cleanKey) {
+      setErrorMsg("Pehle EmailJS Service ID, Template ID, aur Public Key darj karein.");
+      return;
+    }
+
     const subjects = subjectsText
       .split(/\r?\n/)
       .map((s) => s.trim())
@@ -258,6 +307,9 @@ function BulkEmailSender() {
       subjects: subjects.length ? subjects : RANDOM_SUBJECTS,
       message: messageBody.trim() || BODY_MESSAGE,
       index: 0,
+      serviceId: cleanService,
+      templateId: cleanTemplate,
+      publicKey: cleanKey,
     };
 
     nextSendAtRef.current = emails.length > 1 ? Date.now() + INTERVAL_MS : 0;
@@ -272,13 +324,20 @@ function BulkEmailSender() {
     setStatusMsg("Automatic sending stopped.");
   };
 
+  const handleResetDefaults = () => {
+    setServiceId(DEFAULT_SERVICE_ID);
+    setTemplateId(DEFAULT_TEMPLATE_ID);
+    setPublicKey(DEFAULT_PUBLIC_KEY);
+    setStatusMsg("Default EmailJS credentials restored.");
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased flex flex-col justify-between">
       <section className="bg-gradient-to-br from-slate-950 via-[#0d3b22] to-[#156b3e] text-white py-10 sm:py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-6 space-y-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-8">
             <span className="inline-block bg-emerald-400/15 border border-emerald-300/30 text-emerald-200 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
-              REACT + TAILWIND + EMAILJS • 30S INTERVAL
+              REACT + TAILWIND + EMAILJS • LIVE API CONFIG
             </span>
 
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
@@ -288,7 +347,8 @@ function BulkEmailSender() {
 
             <p className="text-sm sm:text-base text-slate-200 max-w-xl leading-relaxed">
               Extracts recipient emails from your Excel file, picks 1 of 10
-              random subjects, sends via EmailJS, and runs every 30 seconds.
+              random subjects, sends via EmailJS, and lets you swap Service,
+              Template, or Public Keys anytime.
             </p>
 
             <div className="pt-3 border-t border-white/15 flex flex-wrap gap-3 text-xs font-bold text-emerald-100">
@@ -296,15 +356,75 @@ function BulkEmailSender() {
               <span>•</span>
               <span>Interval: 30s</span>
               <span>•</span>
-              <span>Provider: EmailJS</span>
+              <span>Active Template: {templateId || "Not Set"}</span>
             </div>
           </div>
 
-          <div className="lg:col-span-6">
+          <div className="lg:col-span-7">
             <form
               onSubmit={handleStart}
               className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4"
             >
+              {/* Editable EmailJS API Keys Box */}
+              <div className="bg-slate-950/60 border border-emerald-400/30 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-widest text-emerald-300">
+                    EmailJS API Credentials (Live Editable)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetDefaults}
+                    className="text-[11px] font-bold text-emerald-200 hover:text-white underline cursor-pointer"
+                  >
+                    Reset Default Keys
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Service ID
+                    </label>
+                    <input
+                      type="text"
+                      value={serviceId}
+                      onChange={(e) => setServiceId(e.target.value)}
+                      placeholder="service_xxxxxxx"
+                      className="w-full px-3 py-2 bg-slate-900 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Template ID
+                    </label>
+                    <input
+                      type="text"
+                      value={templateId}
+                      onChange={(e) => setTemplateId(e.target.value)}
+                      placeholder="template_xxxxxxx"
+                      className="w-full px-3 py-2 bg-slate-900 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Public Key
+                    </label>
+                    <input
+                      type="text"
+                      value={publicKey}
+                      onChange={(e) => setPublicKey(e.target.value)}
+                      placeholder="Public Key"
+                      className="w-full px-3 py-2 bg-slate-900 border border-white/20 rounded-xl text-xs font-mono text-white outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-emerald-200/80">
+                  Tip: Agar sending ke doran bhi IDs change karein ge to agli email foran nayi keys se send hogi.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-emerald-300 mb-1.5">
                   1. Import Excel File (Recipient Emails)
@@ -341,7 +461,7 @@ function BulkEmailSender() {
                   3. Message Body (Same For All Excel Recipients)
                 </label>
                 <textarea
-                  rows={6}
+                  rows={5}
                   value={messageBody}
                   onChange={(e) => setMessageBody(e.target.value)}
                   disabled={isRunning}
@@ -407,11 +527,12 @@ function BulkEmailSender() {
                 </h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[650px]">
+                <table className="w-full text-left border-collapse min-w-[720px]">
                   <thead>
                     <tr className="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
                       <th className="p-4 font-black">Excel Recipient</th>
                       <th className="p-4 font-black">Random Subject</th>
+                      <th className="p-4 font-black">Template Used</th>
                       <th className="p-4 font-black">Time</th>
                       <th className="p-4 font-black">Status</th>
                     </tr>
@@ -424,6 +545,9 @@ function BulkEmailSender() {
                         </td>
                         <td className="p-4 font-semibold text-slate-800">
                           {item.subject}
+                        </td>
+                        <td className="p-4 font-mono text-xs text-slate-600">
+                          {item.template}
                         </td>
                         <td className="p-4 font-mono text-xs text-slate-600">
                           {item.time}
